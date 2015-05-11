@@ -1,0 +1,94 @@
+Paul:
+
+The Navier-Stokes equations together with mass and energy balance are considered to be able to describe the behavior of flow. The navier-stokes folder is the right the place of solving N-S equations. Since we are using Newton's method to solve them, after all of the operation to the equations, the linear system can be cast as Ax=b. Then PETSc solves it. 
+
+The initialization of PETSc is given in navier_stokes/ns_petsc_functions.cc. I cut some pieces of the code and pasted here. Hopefully my explanation helps. 
+
+        MatCreateAIJ(                   
+                        PETSC_COMM_WORLD,
+                        grid[gid].cellCount*nVars,
+                        grid[gid].cellCount*nVars,
+                        grid[gid].globalCellCount*nVars,
+                        grid[gid].globalCellCount*nVars,
+                        0,&diagonal_nonzeros[0],
+                        0,&off_diagonal_nonzeros[0],
+                        &impOP);
+// http://www.mcs.anl.gov/petsc/petsc-current/docs/manualpages/Mat/MatCreateAIJ.html  It is a sparse parallel matrix in AIJ format (the default parallel PETSc format) as stated. By preallocating the matrix impOP (we call implicit operator. It is actually the A matrix in Ax=b), the matrix size can be saved by a lot. The Example usage in the webpage explains quite clearly. Let me know if you have questions. 
+
+
+        KSPSetOperators(ksp,impOP,impOP); //Sets the matrix associated with the linear system and a (possibly) different one associated with the preconditioner.
+
+        KSPSetTolerances(ksp,rtol,abstol,1.e15,maxits);//Tolerance setup
+        KSPSetType(ksp,KSPFGMRES); //Set the solver, like CG or GMRES
+        KSPGetPC(ksp,&pc); //Before setting the preconditioner, you have to call this function
+        PCSetType(pc,PCBJACOBI);        //PCSetType(pc,PCLU);
+        KSPGMRESSetRestart(ksp,30);
+        KSPSetFromOptions(ksp); //This allows the user to re-specify the above parameters  from the command line without compiling the code. 
+
+MatCreateAIJ(                   
+                        PETSC_COMM_WORLD,
+                        grid[gid].cellCount*nVars,
+                        grid[gid].cellCount*nVars,
+                        grid[gid].globalCellCount*nVars,
+                        grid[gid].globalCellCount*nVars,
+                        0,&diagonal_nonzeros[0],
+                        0,&off_diagonal_nonzeros[0],
+                        &impOP);
+
+
+
+main.cc
+
+//There are two solers:  navie stoke ns[gid].slove; the other is heat, hc[gid].solve()
+//KSP ksp; linear solver context
+//PC pc;    preconditioner context
+
+
+    ns[gid].inistialize(ps_step)
+        mpi_init();
+        mpi_update_ghost_prinitives();
+        ...
+        petsc_init();
+            VecCreateMPI(PETSC_COMM_WORLD,grid[gid].cellCount*nVars,grid[gid].globalCellCount*nVars,&rhs);
+            VecSetFromOptions(rhs);
+            VecDuplicate(rhs,&deltaU);
+            MatCreateMPIAIJ(
+                        PETSC_COMM_WORLD,
+                        grid[gid].cellCount*nVars,
+                        grid[gid].cellCount*nVars,
+                        grid[gid].globalCellCount*nVars,
+                        grid[gid].globalCellCount*nVars,
+                        0,&diagonal_nonzeros[0],
+                        0,&off_diagonal_nonzeros[0],
+                        &impOP);
+
+            KSPSetOperators(ksp,impOP,impOP,SAME_NONZERO_PATTERN);
+            KSPSetTolerances(ksp,rtol,abstol,1.e15,maxits);
+            KSPSetInitialGuessKnoll(ksp,PETSC_TRUE);
+            KSPSetType(ksp,KSPFGMRES);
+            KSPGMRESSetRestart(ksp,300);
+            KSPSetFromOptions(ksp);
+
+        ....
+
+    ns[gid].solve(timeStep, ps_step)
+        petsc_solve();
+            KSPSetOperators(ksp,impOP,impOP,SAME_NONZERO_PATTERN);
+            KSPSolve(ksp,rhs,deltaU);
+            KSPGetIterationNumber(ksp,&nIter);
+            KSPGetResidualNorm(ksp,&rNorm);
+            For loop
+                 VecGetValues(deltaU,1,&index,&update[i].cell(c));
+
+
+        update_variables();
+        mpi_update_ghost_primitives();
+        calc_cell_grads();
+
+
+
+
+GPU:
+
+CULA
+cuSPARSE: MV
