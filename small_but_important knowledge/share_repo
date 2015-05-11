@@ -1,6 +1,0 @@
-Try this to make an existing repository in repodir work for users in group foo:
-
-chgrp -R foo repodir                # set the group
-chmod -R g+rw repodir               # allow the group to read/write
-chmod g+s `find repodir -type d`    # new files get group id of directory
-You probably should also set core.sharedRepository = true in the repo's config.
